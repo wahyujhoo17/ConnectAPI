@@ -1,24 +1,35 @@
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --production --silent || npm install --production --silent
+## ─────────────────────────────────────────────────────────────
+## Dockerfile for apps/engine (Next.js frontend)
+## Build context: ./apps/engine  (standalone, no workspace deps)
+## ─────────────────────────────────────────────────────────────
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY . .
+
+# Copy package manifests and install deps
+COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
-			npm ci --silent; \
-		else \
-			npm install --silent --no-audit --no-fund --legacy-peer-deps; \
-		fi
+      npm ci --silent; \
+    else \
+      npm install --silent --no-audit --no-fund --legacy-peer-deps; \
+    fi
+
+# Copy source and build
+COPY . .
 RUN npm run build
 
+# ── Production runtime ────────────────────────────────────────
 FROM node:20-alpine AS runner
-ENV NODE_ENV=production
 WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy Next.js standalone output + static assets
 COPY --from=builder /app/.next .next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+
 EXPOSE 3000
+
 CMD ["npm", "start"]

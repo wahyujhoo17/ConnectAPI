@@ -1,38 +1,71 @@
-# Dokploy deployment guide
+# Dokploy Deployment Guide
 
-This repo is prepared for deploying `apps/api` (backend) and `apps/engine` (frontend) to Dokploy using Git-based builds.
+This repo is a monorepo with **npm workspaces**. The `apps/api` depends on `packages/database` (Prisma), so all Docker builds for the API **must use the repository root as build context**.
 
-High level steps:
+## Architecture
 
-- In Dokploy, create two applications pointing to this repository:
-  - App `api`: set "Build path" to `apps/api` and Dockerfile path to `apps/api/Dockerfile` (or use `apps/monolith/Dockerfile` if you prefer a single container)
-  - App `engine`: set "Build path" to `apps/engine` and Dockerfile path to `apps/engine/Dockerfile`
+```
+wavo-monorepo/
+├── apps/
+│   ├── api/          ← Fastify backend (depends on packages/database)
+│   └── engine/       ← Next.js frontend (standalone, no workspace deps)
+├── packages/
+│   └── database/     ← Prisma client + migrations
+├── docker/
+│   └── api.Dockerfile
+├── docker-compose.dokploy.yml
+└── package.json      ← Root workspace config
+```
 
-- Add required secrets for each app via Dokploy's Secrets settings (do NOT commit these to Git):
-  - Common: `NODE_ENV`, `PORT`
-  - API: `DATABASE_URL`, `REDIS_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `JWT_PRIVATE_KEY`, `ENCRYPTION_KEY`
-  - Engine: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, and any other `NEXT_PUBLIC_*` values
+## Option 1: Docker Compose (Recommended)
 
-- Trigger a deploy (Dokploy will build the Dockerfile from the specified path).
+Deploy the full stack (API + Frontend + Postgres + Redis + MinIO) using Compose.
 
-Notes and tips:
+### Steps
 
-- Keep `.env` files out of the repo. Use the committed `*.env.example` files for reference.
-- If you want Dokploy to run multiple services (DB, Redis) consider using managed services (e.g., Valkey, Upstash, managed Postgres) and provide their URLs as secrets.
-- CI: A GitHub Actions workflow exists at `.github/workflows/build-and-push.yml` to build and push a monolith image to GHCR if you prefer registry-based deployment.
+1. In Dokploy → Actions → **Compose** (or "New App" → Compose).
+2. Point to this repository, branch `main`, Compose file path: `docker-compose.dokploy.yml`.
+3. **Before deploying**, add these as Dokploy Secrets (override the placeholder values):
+   - `DATABASE_URL` — Postgres connection string
+   - `REDIS_URL` — Redis connection string
+   - `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` — Auth keys
+   - `ENCRYPTION_KEY` — Exactly 32 characters
+   - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` — Object storage credentials
+4. Deploy and watch logs.
 
-## Using Docker Compose in Dokploy
+## Option 2: Individual App Deployment
 
-Dokploy's UI includes a "Compose" option that can deploy a multi-container stack from a Docker Compose file. I've added `docker-compose.dokploy.yml` to the repo which defines `api`, `engine`, `postgres`, `redis`, and `minio` services for convenience.
+### API Backend
 
-Steps to deploy using Compose in Dokploy UI:
+1. Create a new app in Dokploy pointing to this repository.
+2. **Build context**: `.` (repository root) — **NOT** `apps/api`.
+3. **Dockerfile path**: `docker/api.Dockerfile` (or `apps/api/Dockerfile` — they are identical).
+4. Add required secrets:
+   - `DATABASE_URL`, `REDIS_URL`
+   - `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `ENCRYPTION_KEY`
+   - `MINIO_ENDPOINT`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+   - `NODE_ENV=production`, `PORT=4000`
+5. Deploy.
 
-1. In Dokploy, choose Actions → Compose (or "New App" → choose Compose if available).
-2. Point Dokploy at the repository and branch `main` and set the Compose file path to `docker-compose.dokploy.yml`.
-3. Before deploying, replace the placeholder credentials in the compose file by adding Dokploy Secrets for the variables used by `api` and `minio` (e.g., `DATABASE_URL`, `REDIS_URL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `JWT_PRIVATE_KEY`, `ENCRYPTION_KEY`). Dokploy should allow you to override environment variables defined in the Compose file via its Secrets UI.
-4. Start the deploy and watch the logs. Dokploy will create the containers as services and wire the network between them.
+### Engine Frontend
 
-Important production notes:
+1. Create a new app in Dokploy pointing to this repository.
+2. **Build context**: `apps/engine`
+3. **Dockerfile path**: `apps/engine/Dockerfile`
+4. Add required secrets:
+   - `NEXT_PUBLIC_API_URL` — e.g. `https://api.yourdomain.com`
+   - `NEXT_PUBLIC_WS_URL` — e.g. `wss://api.yourdomain.com`
+   - `NODE_ENV=production`, `PORT=3000`
+5. Deploy.
 
-- While Compose is convenient for testing or small deployments, for production it's recommended to use managed DB/Redis/Object storage services and point the `api` to those URLs via secrets. Managed services scale better and are typically more reliable.
-- If you keep Postgres/Redis/MinIO within the Compose stack, ensure you have backups and persistent volumes configured.
+## Important Notes
+
+> **⚠️ Build Context**: The API Dockerfile **must** use the repo root (`.`) as build context because `apps/api` depends on the workspace package `packages/database`. Setting the context to `apps/api` will cause `npm install` to fail with exit code 254.
+
+> **🔒 Secrets**: Never commit real secrets to Git. Use `env-examples/` for reference and add actual values through Dokploy's Secrets UI.
+
+> **🏭 Production**: For production, consider using managed services (Postgres, Redis, Object Storage) instead of running them in Docker containers. Set their connection URLs as Dokploy secrets.
+
+## CI/CD
+
+A GitHub Actions workflow exists at `.github/workflows/build-and-push.yml` to build and push images to GHCR if you prefer registry-based deployment.

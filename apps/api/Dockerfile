@@ -1,57 +1,71 @@
-## Multi-stage Dockerfile for apps/api
-# Builds TypeScript sources and produces a small runtime image
+## ─────────────────────────────────────────────────────────────
+## Dockerfile for apps/api  (monorepo-aware, standalone deploy)
+## Build context MUST be the repository root (.)
+## ─────────────────────────────────────────────────────────────
 
+# ── Stage 1: Install & Build ──────────────────────────────────
 FROM node:20-slim AS builder
-WORKDIR /app
+WORKDIR /build
 
-# Install build tools needed for some native npm modules (node-gyp)
-RUN apt-get update && apt-get install -y python3 build-essential make g++ ca-certificates && rm -rf /var/lib/apt/lists/*
+# System deps for native modules (bcrypt, prisma, etc.)
+RUN apt-get update && \
+    apt-get install -y python3 build-essential make g++ ca-certificates openssl && \
+    rm -rf /var/lib/apt/lists/*
 
-# When the build context is `./apps/api` (as in compose), copy files relative to that context.
-# Copy package files and tsconfig, install dev deps required for build
-COPY package*.json ./
-COPY tsconfig*.json ./
-# Use flags to make npm install more robust inside the build environment
-# --no-audit: skip audit network calls
-# --no-fund: skip funding messages
-# --legacy-peer-deps: avoid peer dependency conflicts during install
-# When the build context is `./apps/api` (as in compose), copy files relative to that context.
-# Copy package files and tsconfig, configure npm for more resilient installs, then install
-COPY package*.json ./
-COPY tsconfig*.json ./
+# 1. Copy root workspace manifests (package.json + lock file)
+COPY package.json package-lock.json ./
 
-# Configure npm to use the official registry, enable retries and allow unsafe-perm
-RUN npm config set registry https://registry.npmjs.org && \
-		npm config set fetch-retries 5 && \
-		npm config set fetch-retry-factor 2 && \
-		npm config set fetch-retry-mintimeout 1000 && \
-		npm config set fetch-retry-maxtimeout 60000 && \
-		npm config set unsafe-perm true && \
-		npm cache clean --force || true
+# 2. Copy workspace package manifests so npm can resolve the workspace graph
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
 
-RUN if [ -f package-lock.json ]; then \
-			npm ci --silent; \
-		else \
-			npm install --silent --no-audit --no-fund --legacy-peer-deps; \
-		fi
+# 3. Install ALL dependencies (workspace-aware) from the lock file
+RUN npm ci --include=dev
 
-# Copy the rest of the app source and build
-COPY . ./
+# 4. Copy workspace sources
+COPY packages/database ./packages/database
+COPY apps/api ./apps/api
+
+# 5. Generate Prisma client & build the database package
+WORKDIR /build/packages/database
+RUN npx prisma generate
 RUN npm run build
 
-## Runtime image
+# 6. Build the API
+WORKDIR /build/apps/api
+RUN npm run build
+
+# ── Stage 2: Production runtime ──────────────────────────────
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# Copy built artifacts and package files from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
+# OpenSSL is needed by Prisma at runtime
+RUN apt-get update && \
+    apt-get install -y openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
-# Install only production dependencies
-RUN npm install --production --silent
+# Copy root workspace manifests
+COPY package.json package-lock.json ./
+
+# Copy package manifests for workspaces we need at runtime
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
+
+# Install production-only deps (workspace-aware)
+RUN npm ci --omit=dev --workspace=apps/api --workspace=packages/database
+
+# Copy built artifacts
+COPY --from=builder /build/apps/api/dist ./apps/api/dist
+COPY --from=builder /build/packages/database/dist ./packages/database/dist
+
+# Copy Prisma schema + generated client (needed at runtime)
+COPY --from=builder /build/packages/database/prisma ./packages/database/prisma
+COPY --from=builder /build/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
+COPY --from=builder /build/packages/database/node_modules/@prisma ./packages/database/node_modules/@prisma
 
 EXPOSE 4000
 
+WORKDIR /app/apps/api
 CMD ["node", "dist/index.js"]

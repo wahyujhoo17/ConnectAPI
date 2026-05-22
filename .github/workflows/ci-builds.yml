@@ -16,11 +16,18 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install & build API
-        working-directory: ./apps/api
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Build database package
+        working-directory: ./packages/database
         run: |
-          npm ci
+          npx prisma generate
           npm run build
+
+      - name: Build API
+        working-directory: ./apps/api
+        run: npm run build
 
   build-engine:
     runs-on: ubuntu-latest
@@ -31,8 +38,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install & build Engine
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Build Engine
         working-directory: ./apps/engine
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
+

@@ -1,0 +1,38 @@
+# Dependencies (each workspace has its own install inside Docker)
+node_modules
+**/node_modules
+
+# Build outputs
+**/dist
+**/.next
+**/out
+
+# Git
+.git
+.github
+
+# Environment files (secrets are injected via Docker env vars)
+.env
+.env.*
+**/.env
+**/.env.*
+
+# IDE & OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Misc
+coverage
+**/coverage
+*.log
+npm-debug.log*
+storage
+
+# Documentation (not needed in build)
+*.md
+!packages/database/prisma/**

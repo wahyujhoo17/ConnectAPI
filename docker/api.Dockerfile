@@ -1,40 +1,74 @@
-## Dockerfile for building `apps/api` using repo root as build context
+## ─────────────────────────────────────────────────────────────
+## Dockerfile for apps/api  (monorepo-aware)
+## Build context MUST be the repository root (.)
+## ─────────────────────────────────────────────────────────────
+
+# ── Stage 1: Install & Build ──────────────────────────────────
 FROM node:20-slim AS builder
 WORKDIR /build
 
-# Install system build deps for native modules
-RUN apt-get update && apt-get install -y python3 build-essential make g++ ca-certificates && rm -rf /var/lib/apt/lists/*
+# System deps for native modules (bcrypt, prisma, etc.)
+RUN apt-get update && \
+    apt-get install -y python3 build-essential make g++ ca-certificates openssl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy package files for the api subfolder and install deps
-COPY apps/api/package*.json ./api/
-COPY apps/api/tsconfig*.json ./api/
-RUN if [ -f ./api/package-lock.json ]; then \
-      cd ./api && npm ci --silent; \
-    else \
-      cd ./api && npm install --silent --no-audit --no-fund --legacy-peer-deps; \
-    fi
+# 1. Copy root workspace manifests (package.json + lock file)
+COPY package.json package-lock.json ./
 
-# Copy api source and build
-COPY apps/api ./api
-WORKDIR /build/api
+# 2. Copy workspace package manifests so npm can resolve the workspace graph
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
+
+# 3. Install ALL dependencies (workspace-aware) from the lock file
+RUN npm ci --include=dev
+
+# 4. Copy workspace sources
+COPY packages/database ./packages/database
+COPY apps/api ./apps/api
+
+# 5. Generate Prisma client & build the database package
+WORKDIR /build/packages/database
+RUN npx prisma generate
 RUN npm run build
 
+# 6. Build the API
+WORKDIR /build/apps/api
+RUN npm run build
+
+# ── Stage 2: Production runtime ──────────────────────────────
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# Copy built artifacts and package files from builder
-COPY --from=builder /build/api/dist ./dist
-COPY --from=builder /build/api/package*.json ./
+# OpenSSL is needed by Prisma at runtime
+RUN apt-get update && \
+    apt-get install -y openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
-# Install only production dependencies
-RUN if [ -f package-lock.json ]; then \
-      npm ci --production --silent; \
-    else \
-      npm install --production --silent --no-audit --no-fund; \
-    fi
+# Copy root workspace manifests
+COPY package.json package-lock.json ./
+
+# Copy package manifests for workspaces we need at runtime
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
+
+# Install production-only deps (workspace-aware)
+RUN npm ci --omit=dev --workspace=apps/api --workspace=packages/database
+
+# Copy built artifacts
+COPY --from=builder /build/apps/api/dist ./apps/api/dist
+COPY --from=builder /build/packages/database/dist ./packages/database/dist
+
+# Copy Prisma schema + generated client (needed at runtime)
+COPY --from=builder /build/packages/database/prisma ./packages/database/prisma
+COPY --from=builder /build/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
+COPY --from=builder /build/packages/database/node_modules/@prisma ./packages/database/node_modules/@prisma
+
+# Copy migrations so we can run prisma migrate deploy on startup if needed
+COPY --from=builder /build/packages/database/prisma/migrations ./packages/database/prisma/migrations
 
 EXPOSE 4000
 
+WORKDIR /app/apps/api
 CMD ["node", "dist/index.js"]
