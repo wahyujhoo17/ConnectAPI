@@ -1,5 +1,6 @@
 import { Queue, Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
+import crypto from 'crypto';
 import { env } from '../config/env.js';
 import { whatsAppServiceManager } from './whatsapp.js';
 import { prisma } from 'database';
@@ -48,12 +49,14 @@ export async function queueMessage(
     backoffDelay = 10000;
   }
 
-  // Create queue job record in DB
+  const queueName = plan.toLowerCase();
+
+  // Create queue job record in DB with a globally unique temporary bullJobId
   const dbJob = await prisma.queueJob.create({
     data: {
       serviceId,
-      bullJobId: '', // To be filled after adding to BullMQ
-      queue: plan.toLowerCase(),
+      bullJobId: `temp:${queueName}:${crypto.randomUUID()}`,
+      queue: queueName,
       type: 'send_message',
       status: 'WAITING',
       maxAttempts,
@@ -70,10 +73,10 @@ export async function queueMessage(
     }
   );
 
-  // Update BullMQ Job ID reference in Database
+  // Update BullMQ Job ID reference in Database with queue-prefixed name to avoid collisions
   await prisma.queueJob.update({
     where: { id: dbJob.id },
-    data: { bullJobId: job.id || '' }
+    data: { bullJobId: `${queueName}:${job.id || crypto.randomUUID()}` }
   });
 
   // Create initial message log in DB
