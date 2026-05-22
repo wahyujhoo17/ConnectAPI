@@ -87,8 +87,22 @@ export async function apiFetch<T>(
   try {
     let response = await fetch(url, config);
 
-    // 401 Interceptor: Access token expired
+    // 401 Interceptor: Access token expired or suspended
     if (response.status === 401) {
+      try {
+        const clone = response.clone();
+        const errJson = await clone.json();
+        if (errJson?.error?.code === 'USER_SUSPENDED') {
+          clearTokens();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login?suspended=true';
+          }
+          return errJson;
+        }
+      } catch (e) {
+        // Ignore clone parsing errors
+      }
+
       const refreshToken = getRefreshToken();
 
       if (refreshToken) {

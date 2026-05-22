@@ -28,6 +28,11 @@ const updateProfileSchema = z.object({
   email: z.string().email().optional(),
 });
 
+const changePasswordSchema = z.object({
+  oldPassword: z.string(),
+  newPassword: z.string().min(8),
+});
+
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   
   // POST /auth/register
@@ -254,13 +259,22 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       });
     }
 
+    const user = activeSession.user;
+    if (!user.isActive) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'USER_SUSPENDED',
+          message: 'Your account has been suspended. Please contact support.',
+        }
+      });
+    }
+
     // Revoke old token
     await prisma.session.update({
       where: { id: activeSession.id },
       data: { revokedAt: new Date() }
     });
-
-    const user = activeSession.user;
 
     // Issue rotating credentials
     const newAccessToken = fastify.jwt.sign({
@@ -387,6 +401,59 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
           plan: updatedUser.plan
         },
         accessToken
+      }
+    });
+  });
+
+  // POST /api/v1/auth/change-password (Authenticated)
+  fastify.post('/change-password', { preHandler: [fastify.authenticate as any] }, async (request: any, reply) => {
+    const parse = changePasswordSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid password change parameters',
+          details: parse.error.format()
+        }
+      });
+    }
+
+    const userId = request.user.sub;
+    const { oldPassword, newPassword } = parse.data;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      return reply.status(404).send({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'User not found.'
+        }
+      });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isMatch) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'INVALID_PASSWORD',
+          message: 'Kata sandi saat ini yang Anda masukkan salah.'
+        }
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash }
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: {
+        message: 'Password updated successfully'
       }
     });
   });

@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 import { useAuth } from '@/components/AuthProvider';
+import { toast } from '@/lib/toast';
 
 const Github = ({ size = 18, ...props }: { size?: number; [key: string]: any }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" xmlns="http://www.w3.org/2000/svg" {...props}>
@@ -25,6 +26,21 @@ export default function LoginPage() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const { login, isLoading } = useAuth();
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('suspended') === 'true') {
+        toast.error(
+          "Akun Ditangguhkan",
+          "Akun Anda sedang ditangguhkan. Silakan hubungi tim dukungan."
+        );
+        const url = new URL(window.location.href);
+        url.searchParams.delete('suspended');
+        window.history.replaceState({}, '', url.pathname + url.search);
+      }
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

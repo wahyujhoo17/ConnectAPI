@@ -1,5 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma, UserRole, UserPlan } from 'database';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
 // Hook to verify administrative access
 const requireAdmin = async (request: any, reply: FastifyReply) => {
@@ -273,6 +275,83 @@ export async function adminRoutes(fastify: FastifyInstance) {
         error: {
           code: 'INTERNAL_ERROR',
           message: 'Failed to update system config value.',
+        },
+      });
+    }
+  });
+
+  // 6. POST /api/v1/admin/users - Create a new user (Admin only)
+  fastify.post('/users', async (request: FastifyRequest, reply: FastifyReply) => {
+    const createUserSchema = z.object({
+      email: z.string().email(),
+      password: z.string().min(8),
+      fullName: z.string().min(2),
+      role: z.nativeEnum(UserRole).default(UserRole.USER),
+      plan: z.nativeEnum(UserPlan).default(UserPlan.FREE),
+    });
+
+    const parse = createUserSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid user parameters.',
+          details: parse.error.format(),
+        },
+      });
+    }
+
+    const { email, password, fullName, role, plan } = parse.data;
+
+    try {
+      const existingUser = await prisma.user.findUnique({
+        where: { email, deletedAt: null },
+      });
+
+      if (existingUser) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'ALREADY_EXISTS',
+            message: 'A user with this email address already exists.',
+          },
+        });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          fullName,
+          passwordHash,
+          role,
+          plan,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          plan: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
+
+      return reply.status(201).send({
+        success: true,
+        data: newUser,
+      });
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to create new user account.',
         },
       });
     }

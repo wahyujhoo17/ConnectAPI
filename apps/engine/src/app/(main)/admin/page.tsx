@@ -58,6 +58,65 @@ export default function AdminDashboardPage() {
   const [proLimit, setProLimit] = React.useState<number>(5000);
   const [businessLimit, setBusinessLimit] = React.useState<number>(50000);
 
+  // Add User states
+  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [newUserName, setNewUserName] = React.useState('');
+  const [newUserEmail, setNewUserEmail] = React.useState('');
+  const [newUserPassword, setNewUserPassword] = React.useState('');
+  const [newUserPlan, setNewUserPlan] = React.useState('FREE');
+  const [newUserRole, setNewUserRole] = React.useState('USER');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const generateRandomPassword = React.useCallback(() => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+    let pass = "";
+    for (let i = 0; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewUserPassword(pass);
+  }, []);
+
+  React.useEffect(() => {
+    if (isAddModalOpen) {
+      generateRandomPassword();
+    }
+  }, [isAddModalOpen, generateRandomPassword]);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserName || !newUserEmail || !newUserPassword) {
+      toast.error("Validation Error", "All fields are required.");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    const res = await apiFetch<any>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({
+        fullName: newUserName,
+        email: newUserEmail,
+        password: newUserPassword,
+        plan: newUserPlan,
+        role: newUserRole
+      })
+    });
+    setIsSubmitting(false);
+
+    if (res.success) {
+      toast.success("User Created", `Successfully created developer account for "${newUserName}".`);
+      setIsAddModalOpen(false);
+      // Reset form
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserPlan('FREE');
+      setNewUserRole('USER');
+      fetchAdminData();
+    } else {
+      toast.error("Creation Failed", res.error?.message || "Failed to create user account.");
+    }
+  };
+
   React.useEffect(() => {
     setMounted(true);
   }, []);
@@ -195,7 +254,7 @@ export default function AdminDashboardPage() {
   return (
     <div className="p-8 max-w-[1400px] mx-auto space-y-10">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/[0.05] pb-6">
         <div>
           <h1 className="text-[32px] font-bold tracking-tight text-white flex items-center gap-3">
             <ShieldCheck className="text-primary w-9 h-9" />
@@ -205,6 +264,14 @@ export default function AdminDashboardPage() {
             Global system settings, user management, and dynamic rate limit controls.
           </p>
         </div>
+        
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary px-5 py-3 rounded-2xl font-bold text-[14px] transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <Plus size={16} />
+          Create User
+        </button>
       </div>
 
       {isLoading ? (
@@ -475,6 +542,142 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Create User Modal */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <>
+            {/* Overlay */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddModalOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            />
+            
+            {/* Modal Card */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-x-4 top-[10%] md:top-[15%] md:left-1/2 md:-translate-x-1/2 md:w-[500px] bg-[#1c1c1e] border border-white/10 rounded-[32px] shadow-2xl p-8 z-[110] overflow-hidden flex flex-col gap-6"
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-[22px] font-bold text-white tracking-tight">Create User</h3>
+                  <p className="text-[13px] text-[#8e8e93] mt-0.5 font-medium">Add a new developer account to the platform.</p>
+                </div>
+                <button 
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8e8e93] hover:text-white transition-colors"
+                >
+                  <Plus size={20} className="rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateUser} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-widest block px-1">Full Name</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="John Doe"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/40 transition-all font-medium"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-widest block px-1">Email Address</label>
+                  <input 
+                    type="email" 
+                    required
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="john@example.com"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/40 transition-all font-medium"
+                  />
+                </div>
+
+                <div className="space-y-2 font-sans">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-widest">Password</label>
+                    <button 
+                      type="button" 
+                      onClick={generateRandomPassword}
+                      className="text-[10px] font-bold text-primary uppercase tracking-widest hover:opacity-80 transition-opacity"
+                    >
+                      Generate Secure
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    required
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    placeholder="Minimum 8 characters"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/40 transition-all font-medium font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-widest block px-1">Subscription Plan</label>
+                    <div className="relative">
+                      <select 
+                        value={newUserPlan}
+                        onChange={(e) => setNewUserPlan(e.target.value)}
+                        className="w-full bg-black/40 border border-white/5 rounded-2xl pl-4 pr-10 py-3 text-white text-sm font-bold outline-none cursor-pointer appearance-none focus:border-primary/40 transition-all"
+                      >
+                        <option value="FREE">Free</option>
+                        <option value="PRO">Pro</option>
+                        <option value="BUSINESS">Business</option>
+                        <option value="ENTERPRISE">Enterprise</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8e8e93] pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-widest block px-1">Access Role</label>
+                    <div className="relative">
+                      <select 
+                        value={newUserRole}
+                        onChange={(e) => setNewUserRole(e.target.value)}
+                        className="w-full bg-black/40 border border-white/5 rounded-2xl pl-4 pr-10 py-3 text-white text-sm font-bold outline-none cursor-pointer appearance-none focus:border-primary/40 transition-all"
+                      >
+                        <option value="USER">User (Standard)</option>
+                        <option value="ADMIN">Admin</option>
+                        <option value="SUPER_ADMIN">Super Admin</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8e8e93] pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="flex-1 py-3.5 bg-white/5 border border-white/10 rounded-2xl text-white font-bold text-sm hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 py-3.5 bg-primary/20 text-primary border border-primary/20 rounded-2xl font-bold text-sm hover:bg-primary/30 transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Creating..." : "Create User"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

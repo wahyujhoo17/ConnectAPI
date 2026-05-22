@@ -124,6 +124,12 @@ export default function SettingsPage() {
   const [email, setEmail] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
 
+  // Change Password States
+  const [oldPassword, setOldPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
+
   // Dynamic States
   const [apiKeys, setApiKeys] = React.useState<any[]>([]);
   const [usageStats, setUsageStats] = React.useState<any>({ messagesSent: 0, apiRequests: 0, dailyUsage: 0 });
@@ -197,6 +203,38 @@ export default function SettingsPage() {
       toast.success("Profile Updated", "Your profile has been saved successfully.");
     } else {
       toast.error("Update Failed", res.error?.message || "An error occurred while updating your profile.");
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      toast.error("Validation Error", "All password fields are required.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Validation Error", "New password and confirmation password do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("Validation Error", "New password must be at least 8 characters long.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    const res = await apiFetch<any>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    });
+    setIsUpdatingPassword(false);
+
+    if (res.success) {
+      toast.success("Password Updated", "Your password has been changed successfully.");
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } else {
+      toast.error("Update Failed", res.error?.message || "Failed to update password.");
     }
   };
 
@@ -368,6 +406,57 @@ export default function SettingsPage() {
                 {isSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
+          </Card>
+
+          {/* Change Password Card */}
+          <Card title="Change Password" subtitle="Update your account password periodically to remain secure.">
+            <form onSubmit={handlePasswordChange} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="space-y-3">
+                  <label className="text-[12px] font-bold text-[#8e8e93] uppercase tracking-wider px-1">Current Password</label>
+                  <input 
+                    type="password"
+                    required
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 text-white text-[15px] outline-none focus:border-primary/40 transition-all font-medium"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[12px] font-bold text-[#8e8e93] uppercase tracking-wider px-1">New Password</label>
+                  <input 
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 8 characters"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 text-white text-[15px] outline-none focus:border-primary/40 transition-all font-medium"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[12px] font-bold text-[#8e8e93] uppercase tracking-wider px-1">Confirm New Password</label>
+                  <input 
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat new password"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 text-white text-[15px] outline-none focus:border-primary/40 transition-all font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-white/[0.03]">
+                <button 
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  className="px-10 py-4 bg-[#cfbcff] text-[#381e72] rounded-2xl font-bold text-[15px] hover:opacity-90 transition-all shadow-[0_0_30px_rgba(207,188,255,0.25)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
+                >
+                  {isUpdatingPassword ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+            </form>
           </Card>
 
           <Card 

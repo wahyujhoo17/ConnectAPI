@@ -70,6 +70,24 @@ export async function createServer(): Promise<FastifyInstanceWithIO> {
   fastify.decorate('authenticate', async (request: any, reply: any) => {
     try {
       await request.jwtVerify();
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.sub }
+      });
+
+      if (!user || !user.isActive) {
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'USER_SUSPENDED',
+            message: 'Your account has been suspended. Please contact support.',
+          },
+          meta: {
+            requestId: request.id,
+            timestamp: new Date(),
+          }
+        });
+      }
+      request.dbUser = user;
     } catch (err) {
       reply.status(401).send({
         success: false,
@@ -118,12 +136,12 @@ export async function createServer(): Promise<FastifyInstanceWithIO> {
       include: { user: true, service: true }
     });
 
-    if (!keyRecord) {
+    if (!keyRecord || !keyRecord.user.isActive) {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'INVALID_API_KEY',
-          message: 'API Key not found or inactive',
+          code: 'USER_SUSPENDED',
+          message: 'Account associated with this API Key has been suspended.',
         }
       });
     }
