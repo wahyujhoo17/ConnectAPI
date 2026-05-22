@@ -5,9 +5,10 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files for the api subfolder and install deps (including dev deps for build)
+# Copy package files and install deps; use `npm install` to support missing lockfile
 COPY apps/api/package*.json ./
 COPY apps/api/tsconfig*.json ./
-RUN npm ci
+RUN npm install --silent
 
 # Copy only the api source to keep context small
 COPY apps/api ./apps/api
@@ -27,7 +28,7 @@ COPY --from=builder /app/apps/api/package*.json ./
 ENV NODE_ENV=production
 
 # Install only production dependencies
-RUN npm ci --production
+RUN npm install --production --silent
 
 EXPOSE 4000
 
