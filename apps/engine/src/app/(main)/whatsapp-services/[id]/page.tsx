@@ -497,42 +497,60 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* API Key Modal Banner (shown only once) */}
+      {/* API Key Modal Overlay (shown only once after creation) */}
       {showNewApiKey && newApiKey && (
-        <div className="p-6 rounded-[24px] bg-[#34C759]/10 border border-[#34C759]/20 space-y-4 relative overflow-hidden animate-fade-in shadow-xl shadow-[#34C759]/5">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#34C759]/5 to-transparent pointer-events-none" />
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-[#34C759]/20 rounded-xl text-[#34C759]">
-                <CheckCircle2 size={24} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1c1c1e] border border-white/10 rounded-[24px] p-6 max-w-[480px] w-full mx-4 space-y-5 shadow-2xl relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-[#34C759]/5 to-transparent pointer-events-none" />
+            
+            {/* Header */}
+            <div className="flex items-center gap-4 relative">
+              <div className="p-3 bg-[#34C759]/20 rounded-2xl text-[#34C759]">
+                <CheckCircle2 size={28} />
               </div>
               <div>
-                <h4 className="text-[18px] font-bold text-white tracking-tight">New API Key Created Successfully</h4>
-                <p className="text-[13px] text-[#8e8e93] font-medium mt-0.5">Please store this secret token in a safe location. For security purposes, you will not be able to retrieve this raw key again.</p>
+                <h3 className="text-[20px] font-bold text-white tracking-tight">API Key Created</h3>
+                <p className="text-[13px] text-[#8e8e93] font-medium mt-0.5">Copy this key now — you won't be able to see it again.</p>
               </div>
             </div>
+
+            {/* Key Display */}
+            <div className="relative space-y-3">
+              <label className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-[0.2em]">Your Secret API Key</label>
+              <div className="flex gap-3">
+                <input 
+                  readOnly 
+                  value={newApiKey}
+                  className="flex-1 bg-black/60 border border-[#34C759]/30 rounded-xl px-4 py-4 text-[15px] font-mono text-white outline-none select-all"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(newApiKey);
+                    toast.success("Copied!", "Full API Key copied to clipboard.");
+                  }}
+                  className="px-5 py-4 bg-[#34C759] hover:bg-[#34C759]/90 rounded-xl text-black font-bold text-[14px] transition-all flex items-center gap-2 shrink-0"
+                >
+                  <Copy size={18} />
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="flex items-start gap-3 p-4 bg-[#FFCC00]/10 border border-[#FFCC00]/20 rounded-xl">
+              <span className="text-[#FFCC00] text-[18px] shrink-0">⚠️</span>
+              <p className="text-[13px] text-[#FFCC00]/90 leading-relaxed">
+                <strong>This is the only time the full key will be shown.</strong> Store it in a secure location like a password manager or environment variable.
+              </p>
+            </div>
+
+            {/* Dismiss */}
             <button 
               onClick={() => setShowNewApiKey(false)}
-              className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-[12px] font-bold text-[#8e8e93] hover:text-white transition-all"
+              className="w-full py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[14px] font-bold text-white transition-all"
             >
-              Dismiss
-            </button>
-          </div>
-          <div className="flex gap-3 max-w-[800px] mt-2">
-            <input 
-              readOnly 
-              value={newApiKey}
-              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3.5 text-[14px] font-mono text-white outline-none focus:border-[#34C759]/50 transition-all"
-            />
-            <button 
-              onClick={() => {
-                navigator.clipboard.writeText(newApiKey);
-                toast.success("Copied Key", "API Token copied to clipboard!");
-              }}
-              className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[#8e8e93] hover:text-white transition-all flex items-center justify-center gap-2"
-            >
-              <Copy size={18} />
-              <span className="text-[13px] font-bold uppercase tracking-wider hidden sm:inline">Copy</span>
+              I've Saved My Key — Close
             </button>
           </div>
         </div>
@@ -672,18 +690,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ id: st
                     <div key={key.id} className="flex items-center justify-between bg-black/20 border border-white/5 px-4 py-3 rounded-xl">
                       <div className="space-y-0.5">
                         <div className="text-[14px] font-bold text-white">{key.name}</div>
-                        <div className="flex items-center gap-1.5 text-[12px] text-[#8e8e93] font-mono group/key">
-                          <span>{key.keyPrefix}************</span>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(`${key.keyPrefix}************`);
-                              toast.info("Prefix Copied", "Only the key prefix is stored. The full key was shown only once at creation time.");
-                            }}
-                            className="p-1 hover:bg-white/10 hover:text-white rounded transition-colors text-white/40 opacity-0 group-hover/key:opacity-100 focus:opacity-100"
-                            title="Copy key prefix (full key was shown only at creation)"
-                          >
-                            <Copy size={12} />
-                          </button>
+                        <div className="text-[12px] text-[#8e8e93] font-mono">
+                          {key.keyPrefix}••••••••
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
