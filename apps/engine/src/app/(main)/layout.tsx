@@ -134,6 +134,9 @@ export default function DashboardLayout({
           <SidebarLink href="/logs" icon={ClipboardList} label="Logs" active={pathname === '/logs'} minimized={isMinimized} />
           <SidebarLink href="/docs" icon={FileText} label="Documentation" active={pathname === '/docs'} minimized={isMinimized} />
           <SidebarLink href="/settings" icon={Settings} label="Settings" active={pathname === '/settings'} minimized={isMinimized} />
+          {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') && (
+            <SidebarLink href="/admin" icon={ShieldCheck} label="Admin Panel" active={pathname.startsWith('/admin')} minimized={isMinimized} />
+          )}
         </nav>
 
         <div className={`p-6 space-y-6 ${isMinimized ? 'px-4' : ''}`}>

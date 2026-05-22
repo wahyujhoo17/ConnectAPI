@@ -7,6 +7,7 @@ import http from 'http';
 import { env } from './config/env.js';
 import { whatsAppServiceManager } from './services/whatsapp.js';
 import { authRoutes } from './routes/auth.js';
+import { adminRoutes } from './routes/admin.js';
 import { serviceRoutes } from './routes/services.js';
 import { messagingRoutes } from './routes/messaging.js';
 import { logsRoutes } from './routes/logs.js';
@@ -174,6 +175,7 @@ export async function createServer(): Promise<FastifyInstanceWithIO> {
 
   // Register API Routes
   await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
+  await fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
   await fastify.register(serviceRoutes, { prefix: '/api/v1/services' });
   await fastify.register(messagingRoutes, { prefix: '/api/v1/send' });
   await fastify.register(logsRoutes, { prefix: '/api/v1' });

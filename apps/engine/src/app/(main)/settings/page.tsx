@@ -284,13 +284,13 @@ export default function SettingsPage() {
   const getLimits = () => {
     switch (user?.plan) {
       case 'PRO':
-        return { messages: 100000, apiRequests: 500000, daily: 10000 };
+        return { messages: 100000, apiRequests: 500000, daily: 5000 };
       case 'BUSINESS':
         return { messages: 500000, apiRequests: 2500000, daily: 50000 };
       case 'ENTERPRISE':
-        return { messages: 5000000, apiRequests: 25000000, daily: 500000 };
+        return { messages: 5000000, apiRequests: 25000000, daily: 999999 };
       default: // FREE
-        return { messages: 10000, apiRequests: 50000, daily: 1000 };
+        return { messages: 10000, apiRequests: 50000, daily: 100 };
     }
   };
 

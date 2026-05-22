@@ -121,6 +121,19 @@ export const messagingRoutes: FastifyPluginAsync = async (
     else if (plan === "BUSINESS") dailyLimit = 50000;
     else if (plan === "ENTERPRISE") dailyLimit = 99999999; // Unlimited
 
+    // Load dynamic daily limit from SystemConfig in DB if available
+    try {
+      const configKey = `rate_limit.${plan.toLowerCase()}.daily`;
+      const systemConfig = await prisma.systemConfig.findUnique({
+        where: { key: configKey },
+      });
+      if (systemConfig && typeof systemConfig.value === "number") {
+        dailyLimit = systemConfig.value;
+      }
+    } catch (err) {
+      // Fallback to static plan values silently
+    }
+
     if (sentTodayCount >= dailyLimit) {
       return reply.status(403).send({
         success: false,
