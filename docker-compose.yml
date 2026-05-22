@@ -60,6 +60,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    volumes:
+      - wavo_api_storage:/app/apps/api/storage
 
   wavo-frontend:
     container_name: wavo-frontend
@@ -84,3 +86,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  wavo_api_storage:
