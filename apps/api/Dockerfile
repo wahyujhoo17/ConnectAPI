@@ -60,10 +60,11 @@ RUN npm ci --omit=dev --workspace=apps/api --workspace=packages/database
 COPY --from=builder /build/apps/api/dist ./apps/api/dist
 COPY --from=builder /build/packages/database/dist ./packages/database/dist
 
-# Copy Prisma schema + generated client (needed at runtime)
+# Copy Prisma schema (needed for prisma generate)
 COPY --from=builder /build/packages/database/prisma ./packages/database/prisma
-COPY --from=builder /build/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
-COPY --from=builder /build/packages/database/node_modules/@prisma ./packages/database/node_modules/@prisma
+
+# Re-generate Prisma client in the runner (ensures it matches the runtime OS/arch)
+RUN cd packages/database && npx prisma generate
 
 EXPOSE 4000
 
