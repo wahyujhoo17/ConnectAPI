@@ -5,12 +5,20 @@ declare module "database" {
   // Prisma client instance (approximate)
   export const prisma: any;
 
-  // Common enums/types used in the codebase — declared as `any` to avoid
-  // blocking the build. Replace with real type definitions if available.
-  export type UserRole = any;
-  export type UserPlan = any;
-  export type ServiceStatus = any;
-  export type DeliveryStatus = any;
+  // Common enums/types used in the codebase — provide both a runtime value
+  // (as `any`) and a type so code that uses these symbols as values or types
+  // will compile. Replace with real definitions if available.
+  export const UserRole: any;
+  export type UserRole = typeof UserRole;
+
+  export const UserPlan: any;
+  export type UserPlan = typeof UserPlan;
+
+  export const ServiceStatus: any;
+  export type ServiceStatus = typeof ServiceStatus;
+
+  export const DeliveryStatus: any;
+  export type DeliveryStatus = typeof DeliveryStatus;
 
   const _default: any;
   export default _default;
