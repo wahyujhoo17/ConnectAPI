@@ -80,8 +80,8 @@ wavo-monorepo/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-username/wavo.git
-cd wavo
+git clone https://github.com/wahyujhoo17/WavoApp.git
+cd WavoApp
 npm install
 ```
 
