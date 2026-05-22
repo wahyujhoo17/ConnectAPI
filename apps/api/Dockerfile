@@ -8,7 +8,11 @@ WORKDIR /app
 # Copy package files and tsconfig, install dev deps required for build
 COPY package*.json ./
 COPY tsconfig*.json ./
-RUN npm install --silent
+# Use flags to make npm install more robust inside the build environment
+# --no-audit: skip audit network calls
+# --no-fund: skip funding messages
+# --legacy-peer-deps: avoid peer dependency conflicts during install
+RUN npm install --silent --no-audit --no-fund --legacy-peer-deps
 
 # Copy the rest of the app source and build
 COPY . ./
