@@ -89,10 +89,7 @@ export default function DashboardOverviewPage() {
   const { user } = useAuth();
   const [activeLines, setActiveLines] = React.useState({ current: true, prev: false });
   const [services, setServices] = React.useState<any[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = React.useState<string>('');
-  const [analytics, setAnalytics] = React.useState<any>(null);
-  const [recentLogs, setRecentLogs] = React.useState<any[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [dailyData, setDailyData] = React.useState<Array<{ date: string; label: string; outbound: number; inbound: number; total: number }>>([]);
 
   const fetchInitialData = async () => {
     setIsLoading(true);
@@ -118,9 +115,10 @@ export default function DashboardOverviewPage() {
     if (!selectedServiceId) return;
 
     const fetchServiceData = async () => {
-      const [analyticsRes, logsRes] = await Promise.all([
+      const [analyticsRes, logsRes, dailyRes] = await Promise.all([
         apiFetch<any>(`/analytics?serviceId=${selectedServiceId}`),
-        apiFetch<any[]>(`/logs?serviceId=${selectedServiceId}&limit=5`)
+        apiFetch<any[]>(`/logs?serviceId=${selectedServiceId}&limit=5`),
+        apiFetch<any[]>(`/analytics/daily?serviceId=${selectedServiceId}`)
       ]);
 
       if (analyticsRes.success && analyticsRes.data) {
@@ -128,6 +126,9 @@ export default function DashboardOverviewPage() {
       }
       if (logsRes.success && logsRes.data) {
         setRecentLogs(logsRes.data);
+      }
+      if (dailyRes.success && dailyRes.data) {
+        setDailyData(dailyRes.data);
       }
       setIsLoading(false);
     };
@@ -143,6 +144,40 @@ export default function DashboardOverviewPage() {
   const totalMessages = totalOutbound + totalInbound;
   const successRate = analytics?.stats?.successRate ?? 100;
   const failedCount = analytics?.stats?.outbound?.failed || 0;
+
+  // Build SVG path from daily data
+  const buildChartPath = (data: typeof dailyData, key: 'total' | 'outbound' | 'inbound') => {
+    if (data.length === 0) return { line: '', area: '', maxVal: 0, points: [] as Array<{ x: number; y: number; val: number }> };
+    
+    const values = data.map(d => d[key]);
+    const maxVal = Math.max(...values, 1); // min 1 to avoid division by 0
+    const W = 1000;
+    const H = 300;
+    const padding = 10;
+    
+    const points = values.map((v, i) => ({
+      x: (i / (values.length - 1 || 1)) * W,
+      y: H - padding - ((v / maxVal) * (H - padding * 2)),
+      val: v
+    }));
+    
+    // Build smooth bezier curve
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
+      const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
+      path += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
+    }
+    
+    const area = `${path} V ${H} H ${points[0].x} Z`;
+    
+    return { line: path, area, maxVal, points };
+  };
+
+  const chartData = buildChartPath(dailyData, 'total');
+  const chartMaxY = chartData.maxVal;
 
   return (
     <div className="p-8 max-w-[1400px] mx-auto space-y-10">
@@ -226,7 +261,7 @@ export default function DashboardOverviewPage() {
                  <div className="flex justify-between items-start mb-12">
                    <div>
                      <h3 className="text-[22px] font-bold text-white tracking-tight">Message Analytics</h3>
-                     <p className="text-[14px] text-[#8e8e93] font-medium mt-1">Real-time throughput for the last 7 days</p>
+                     <p className="text-[14px] text-[#8e8e93] font-medium mt-1">Daily throughput for the last 7 days</p>
                    </div>
                    <div className="flex items-center gap-2 bg-black/20 p-1 rounded-2xl border border-white/5">
                      <button 
@@ -234,14 +269,7 @@ export default function DashboardOverviewPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${activeLines.current ? 'bg-[#cfbcff]/10 text-[#cfbcff]' : 'text-[#8e8e93] hover:bg-white/5'}`}
                      >
                        <div className={`w-2 h-2 rounded-full ${activeLines.current ? 'bg-[#cfbcff]' : 'bg-[#8e8e93]'}`} />
-                       <span className="text-[11px] font-bold uppercase tracking-wider">Current</span>
-                     </button>
-                     <button 
-                      onClick={() => setActiveLines({...activeLines, prev: !activeLines.prev})}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${activeLines.prev ? 'bg-white/10 text-white' : 'text-[#8e8e93] hover:bg-white/5'}`}
-                     >
-                       <div className={`w-2 h-2 rounded-full ${activeLines.prev ? 'bg-white/30' : 'bg-[#8e8e93]'}`} />
-                       <span className="text-[11px] font-bold uppercase tracking-wider">Prev Period</span>
+                       <span className="text-[11px] font-bold uppercase tracking-wider">Messages</span>
                      </button>
                    </div>
                  </div>
@@ -249,12 +277,12 @@ export default function DashboardOverviewPage() {
                  <div className="flex gap-4">
                    {/* Y-Axis Labels */}
                    <div className="flex flex-col justify-between py-1 h-[320px] text-[11px] font-bold text-[#8e8e93]/50 uppercase tracking-widest w-12 text-right">
-                     <span>{totalMessages > 0 ? (totalMessages * 1.5).toFixed(0) : '100'}</span>
-                     <span>{totalMessages > 0 ? (totalMessages * 0.75).toFixed(0) : '50'}</span>
+                     <span>{chartMaxY}</span>
+                     <span>{Math.round(chartMaxY * 0.5)}</span>
                      <span>0</span>
                    </div>
 
-                   {/* Smooth Bezier Chart */}
+                   {/* Data-driven Chart */}
                    <div className="relative h-[320px] flex-1 mt-4">
                       <svg className="w-full h-full overflow-visible" viewBox="0 0 1000 300" preserveAspectRatio="none">
                         {/* Grid Lines */}
@@ -269,29 +297,14 @@ export default function DashboardOverviewPage() {
                           </linearGradient>
                         </defs>
 
-                        {/* Prev Period Line */}
-                        {activeLines.prev && (
-                          <motion.path 
-                            initial={{ opacity: 0, pathLength: 0 }}
-                            animate={{ opacity: 0.3, pathLength: 1 }}
-                            transition={{ duration: 1.5 }}
-                            d="M 0 280 C 150 290, 300 270, 450 260 C 600 250, 750 200, 1000 180" 
-                            fill="none" 
-                            stroke="white" 
-                            strokeWidth="3" 
-                            strokeDasharray="8 8"
-                            strokeLinecap="round"
-                          />
-                        )}
-
-                        {/* Smooth Path - Bezier Curves */}
-                        {activeLines.current && (
+                        {/* Real data line */}
+                        {activeLines.current && chartData.line && (
                           <>
                             <motion.path 
                               initial={{ pathLength: 0, opacity: 0 }}
                               animate={{ pathLength: 1, opacity: 1 }}
                               transition={{ duration: 2.5, ease: "easeInOut" }}
-                              d="M 0 250 C 100 240, 200 200, 300 240 C 400 280, 500 150, 600 120 C 700 90, 800 130, 900 100 C 950 85, 1000 80, 1000 80" 
+                              d={chartData.line}
                               fill="none" 
                               stroke="#cfbcff" 
                               strokeWidth="4" 
@@ -299,18 +312,49 @@ export default function DashboardOverviewPage() {
                               strokeLinejoin="round"
                             />
                             <path 
-                              d="M 0 250 C 100 240, 200 200, 300 240 C 400 280, 500 150, 600 120 C 700 90, 800 130, 900 100 C 950 85, 1000 80, 1000 80 V 300 H 0 Z" 
+                              d={chartData.area}
                               fill="url(#smoothGradient)" 
                             />
+                            {/* Data points */}
+                            {chartData.points.map((p, i) => (
+                              <g key={i}>
+                                <circle
+                                  cx={p.x} cy={p.y} r="6"
+                                  fill="#1c1c1e" stroke="#cfbcff" strokeWidth="3"
+                                  className="opacity-0 hover:opacity-100 transition-opacity"
+                                />
+                                <circle
+                                  cx={p.x} cy={p.y} r="3"
+                                  fill="#cfbcff"
+                                  className="opacity-0 hover:opacity-100 transition-opacity"
+                                />
+                              </g>
+                            ))}
                           </>
+                        )}
+
+                        {/* No data state */}
+                        {activeLines.current && !chartData.line && (
+                          <text x="500" y="150" textAnchor="middle" fill="#8e8e93" fontSize="14" fontWeight="bold">
+                            No message data yet — send messages to see analytics
+                          </text>
                         )}
                       </svg>
                       
-                      {/* Labels */}
+                      {/* Day Labels from real data */}
                       <div className="flex justify-between mt-10 px-2">
-                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Mon', 'Today'].map((day, i) => (
-                          <span key={i} className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-[0.2em]">{day}</span>
-                        ))}
+                        {dailyData.length > 0 ? (
+                          dailyData.map((d, i) => (
+                            <div key={i} className="flex flex-col items-center gap-1">
+                              <span className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-[0.2em]">{d.label}</span>
+                              <span className="text-[10px] font-mono text-[#cfbcff]/60">{d.total}</span>
+                            </div>
+                          ))
+                        ) : (
+                          ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Today'].map((day, i) => (
+                            <span key={i} className="text-[11px] font-bold text-[#8e8e93] uppercase tracking-[0.2em]">{day}</span>
+                          ))
+                        )}
                       </div>
                    </div>
                  </div>

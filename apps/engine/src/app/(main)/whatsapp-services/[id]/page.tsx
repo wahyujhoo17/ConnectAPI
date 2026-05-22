@@ -676,11 +676,11 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ id: st
                           <span>{key.keyPrefix}************</span>
                           <button
                             onClick={() => {
-                              navigator.clipboard.writeText(key.keyPrefix);
-                              toast.success("Prefix Copied", "API Key prefix copied to clipboard!");
+                              navigator.clipboard.writeText(`${key.keyPrefix}************`);
+                              toast.info("Prefix Copied", "Only the key prefix is stored. The full key was shown only once at creation time.");
                             }}
                             className="p-1 hover:bg-white/10 hover:text-white rounded transition-colors text-white/40 opacity-0 group-hover/key:opacity-100 focus:opacity-100"
-                            title="Copy Prefix"
+                            title="Copy key prefix (full key was shown only at creation)"
                           >
                             <Copy size={12} />
                           </button>

@@ -181,6 +181,78 @@ export const logsRoutes: FastPluginAsync = async (fastify: FastifyInstance) => {
     });
   });
 
+  // GET /api/v1/analytics/daily - Daily message breakdown for chart
+  fastify.get("/analytics/daily", async (request: any, reply) => {
+    const parse = analyticsQuerySchema.safeParse(request.query);
+    if (!parse.success) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: "VALIDATION_ERROR", details: parse.error.format() },
+      });
+    }
+
+    const { serviceId } = parse.data;
+    const userId = request.user.sub;
+
+    const service = await prisma.whatsAppService.findFirst({
+      where: { id: serviceId, userId, deletedAt: null },
+    });
+
+    if (!service) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: "NOT_FOUND", message: "WhatsApp Service not found" },
+      });
+    }
+
+    // Get last 7 days of data
+    const days = 7;
+    const now = new Date();
+    const dailyData: Array<{ date: string; label: string; outbound: number; inbound: number; total: number }> = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = new Date(now);
+      dayStart.setDate(dayStart.getDate() - i);
+      dayStart.setHours(0, 0, 0, 0);
+
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const logs = await prisma.messageLog.groupBy({
+        by: ["direction"],
+        where: {
+          serviceId,
+          createdAt: { gte: dayStart, lte: dayEnd },
+        },
+        _count: { id: true },
+      });
+
+      let outbound = 0;
+      let inbound = 0;
+      logs.forEach((l) => {
+        if (l.direction === "OUTBOUND") outbound = l._count.id;
+        else inbound = l._count.id;
+      });
+
+      const dayLabel = i === 0
+        ? "Today"
+        : dayStart.toLocaleDateString("en-US", { weekday: "short" });
+
+      dailyData.push({
+        date: dayStart.toISOString().split("T")[0],
+        label: dayLabel,
+        outbound,
+        inbound,
+        total: outbound + inbound,
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      data: dailyData,
+    });
+  });
+
   // GET /api/v1/webhooks/:id/deliveries - List webhook delivery logs
   fastify.get("/webhooks/:id/deliveries", async (request: any, reply) => {
     const webhookId = request.params.id;
