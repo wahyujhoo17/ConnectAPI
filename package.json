@@ -1,0 +1,15 @@
+{
+  "name": "wavo-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:landing": "npm run dev -w landing",
+    "dev:engine": "npm run dev -w engine",
+    "build:landing": "npm run build -w landing",
+    "build:engine": "npm run build -w engine"
+  }
+}

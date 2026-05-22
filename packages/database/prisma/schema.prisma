@@ -1,0 +1,308 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String?
+  fullName        String
+  avatarUrl       String?
+  role            UserRole  @default(USER)
+  plan            UserPlan  @default(FREE)
+
+  googleId        String?   @unique
+
+  isActive        Boolean   @default(true)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+
+  services        WhatsAppService[]
+  apiKeys         ApiKey[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([email])
+  @@index([role, plan])
+  @@index([deletedAt])
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum UserPlan {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+model Session {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String  @unique
+  tokenFamily      String
+  userAgent        String?
+  ipAddress        String?
+
+  expiresAt       DateTime
+  revokedAt       DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenFamily])
+  @@index([expiresAt])
+}
+
+model WhatsAppService {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  slug            String        @unique
+  status          ServiceStatus @default(INACTIVE)
+  phoneNumber     String?
+
+  sessionStoragePath String?    // MinIO/S3 path or local storage folder to encrypted session
+
+  webhooks        WebhookConfig[]
+  apiKeys         ApiKey[]
+  messageLogs     MessageLog[]
+  queueJobs       QueueJob[]
+
+  dailyMessageCount Int        @default(0)
+  dailyMessageResetAt DateTime?
+
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([slug])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+enum ServiceStatus {
+  INACTIVE
+  CONNECTING
+  QR_PENDING
+  CONNECTED
+  DISCONNECTED
+  SUSPENDED
+}
+
+model ApiKey {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId     String
+  service       WhatsAppService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  name          String
+  keyPrefix     String          // First 8 chars for identification: "wavo_abc"
+  keyHash       String   @unique // SHA-256 hash of full key
+
+  scopes        String[] @default(["send:message", "read:logs"])
+  isActive      Boolean  @default(true)
+
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([keyHash])
+}
+
+model WebhookConfig {
+  id            String   @id @default(uuid())
+  serviceId     String
+  service       WhatsAppService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  url           String
+  secret        String          // For HMAC-SHA256 signing
+  events        String[]        // ["message.received", "message.sent", ...]
+  isActive      Boolean  @default(true)
+
+  deliveryLogs  WebhookDeliveryLog[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([serviceId])
+}
+
+model WebhookDeliveryLog {
+  id            BigInt   @id @default(autoincrement())
+  webhookId     String
+  webhook       WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  event         String
+  payload       Json
+  responseStatus Int?
+  responseBody  String?
+  duration      Int?            // ms
+
+  status        DeliveryStatus  @default(PENDING)
+  attempts      Int      @default(0)
+  nextRetryAt   DateTime?
+  lastError     String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum DeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  DLQ
+}
+
+model MessageLog {
+  id            BigInt          @id @default(autoincrement())
+  serviceId     String
+  service       WhatsAppService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  direction     MessageDirection
+  messageType   MessageType
+  toNumber      String
+  fromNumber    String?
+
+  status        MessageStatus
+  errorMessage  String?
+
+  payload       Json?           // Message content (JSONB)
+  metadata      Json?           // Extra data (JSONB)
+
+  queueJobId    String?         // Reference to BullMQ job
+  webhookDeliveredAt DateTime?
+
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+
+  createdAt     DateTime @default(now())
+
+  @@index([serviceId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([toNumber])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  LOCATION
+  CONTACT
+  REACTION
+}
+
+enum MessageStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model QueueJob {
+  id            String   @id @default(uuid())
+  serviceId     String
+  service       WhatsAppService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  bullJobId     String   @unique
+  queue         String            // "enterprise", "pro", "free", "bulk"
+  type          String            // "send_message", "send_bulk", "send_media"
+
+  status        JobStatus @default(WAITING)
+  priority      Int       @default(0)
+
+  payload       Json
+  result        Json?
+  errorMessage  String?
+
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
+
+  startedAt     DateTime?
+  completedAt   DateTime?
+  failedAt      DateTime?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([serviceId])
+  @@index([bullJobId])
+  @@index([status])
+  @@index([queue])
+}
+
+enum JobStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  FAILED
+  DLQ
+}
+
+model AuditLog {
+  id            BigInt   @id @default(autoincrement())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+
+  action        String          // "user.created", "service.deleted", "apikey.revoked"
+  resource      String          // "User", "WhatsAppService", "ApiKey"
+  resourceId    String?
+  details       Json?           // Changed fields, old/new values
+  ipAddress     String?
+  userAgent     String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+}
+
+model SystemConfig {
+  id            String   @id @default(uuid())
+  key           String   @unique    // "rate_limit.free.daily", "feature.bulk_send"
+  value         Json                // Flexible value
+  description   String?
+  updatedBy     String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([key])
+}
