@@ -197,6 +197,51 @@ export default function DocumentationPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  React.useEffect(() => {
+    const sectionIds = SECTIONS.map((s) => s.id);
+    const intersectingMap = new Map<string, boolean>();
+
+    const handleIntersect = (entries: IntersectionObserverEntry[]) => {
+      entries.forEach((entry) => {
+        intersectingMap.set(entry.target.id, entry.isIntersecting);
+      });
+
+      const visibleSections = sectionIds.filter((id) => intersectingMap.get(id));
+
+      if (visibleSections.length > 0) {
+        let minTop = Infinity;
+        let closestId = visibleSections[0];
+
+        visibleSections.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            const top = Math.abs(rect.top);
+            if (top < minTop) {
+              minTop = top;
+              closestId = id;
+            }
+          }
+        });
+
+        setActiveSection(closestId);
+      }
+    };
+
+    const observer = new IntersectionObserver(handleIntersect, {
+      root: null, // use viewport
+      rootMargin: '-10% 0px -60% 0px', // focus in the top-middle range of viewport
+      threshold: [0, 0.2, 0.4, 0.6, 0.8, 1.0], // listen to incremental changes
+    });
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   /* ─── Code Snippets ─── */
   const curlLogin = `curl -X POST ${API_BASE_URL}/auth/login \\
   -H "Content-Type: application/json" \\
